@@ -1,23 +1,23 @@
 #!/bin/bash
 
-# Kiểm tra quyền root
+# Tự động chạy lại bằng sudo nếu không phải root
 if [ "$EUID" -ne 0 ]; then
-    echo "❌ Vui lòng chạy script bằng quyền root."
-    exit 1
+    echo "🔁 Script không chạy bằng root. Đang thử lại với sudo..."
+    exec sudo "$0" "$@"
 fi
 
-# Cài đặt dante-server
-apt update -y && apt install -y dante-server pwgen
+# Cài đặt dante-server và công cụ tạo mật khẩu
+apt update -y && apt install -y dante-server pwgen curl
 
-# Tạo user/pass ngẫu nhiên
+# Tạo user/password ngẫu nhiên
 user="user$(shuf -i 1000-9999 -n 1)"
 pass=$(pwgen 10 1)
 
-# Thêm user vào hệ thống
+# Thêm user hệ thống (không tạo home, không login shell)
 useradd -M -s /usr/sbin/nologin "$user"
 echo "$user:$pass" | chpasswd
 
-# Tạo file cấu hình cho dante
+# Cấu hình dante
 cat > /etc/danted.conf <<EOF
 logoutput: /var/log/danted.log
 
@@ -39,11 +39,11 @@ pass {
 }
 EOF
 
-# Tự động tìm interface nếu eth0 không tồn tại
+# Tự động chọn interface nếu không phải eth0
 iface=$(ip route | grep default | awk '{print $5}' | head -n1)
 sed -i "s/external: eth0/external: $iface/" /etc/danted.conf
 
-# Bật dịch vụ Dante
+# Tạo service danted
 cat > /etc/systemd/system/danted.service <<EOF
 [Unit]
 Description=Dante SOCKS5 Proxy
@@ -64,16 +64,16 @@ systemctl daemon-reload
 systemctl enable danted
 systemctl restart danted
 
-# Lấy IP public
+# Lấy IP công cộng
 ip=$(curl -s ifconfig.me)
 
-# Hiển thị thông tin proxy SOCKS5
+# Hiển thị thông tin
 echo ""
-echo "✅ SOCKS5 Proxy đã được thiết lập thành công!"
-echo "--------------------------------------------"
-echo "🔌 Host    : $ip"
-echo "📍 Port    : 6969"
-echo "👤 User    : $user"
-echo "🔑 Pass    : $pass"
-echo "🌐 Proxy   : socks5://$user:$pass@$ip:6969"
-echo "--------------------------------------------"
+echo "🎉 SOCKS5 Proxy đã được cài đặt thành công!"
+echo "────────────────────────────────────────────"
+echo "🌐 IP         : $ip"
+echo "🔌 Port       : 6969"
+echo "👤 Username   : $user"
+echo "🔑 Password   : $pass"
+echo "📎 Proxy URL  : socks5://$user:$pass@$ip:6969"
+echo "────────────────────────────────────────────"
