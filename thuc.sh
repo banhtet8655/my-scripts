@@ -1,79 +1,77 @@
 #!/bin/bash
 
-# Tự động chạy lại bằng sudo nếu không phải root
-if [ "$EUID" -ne 0 ]; then
-    echo "🔁 Script không chạy bằng root. Đang thử lại với sudo..."
-    exec sudo "$0" "$@"
-fi
+# Màu sắc
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m'
 
-# Cài đặt dante-server và công cụ tạo mật khẩu
-apt update -y && apt install -y dante-server pwgen curl
+# In logo
+echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║${WHITE}             ⚡ SOCKS5 PROXY AUTO INSTALLER ⚡          ${CYAN}║${NC}"
+echo -e "${CYAN}║${WHITE}      🚀 Powered by S2CODETAEM | Port: 6969            ${CYAN}║${NC}"
+echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+echo ""
 
-# Tạo user/password ngẫu nhiên
-user="user$(shuf -i 1000-9999 -n 1)"
-pass=$(pwgen 10 1)
+# Tạo user/pass SOCKS5 ngẫu nhiên
+proxy_user="user$(openssl rand -hex 2)"
+proxy_pass="$(openssl rand -base64 6)"
 
-# Thêm user hệ thống (không tạo home, không login shell)
-useradd -M -s /usr/sbin/nologin "$user"
-echo "$user:$pass" | chpasswd
+echo -e "${BLUE}➤ User: ${WHITE}$proxy_user${NC}"
+echo -e "${BLUE}➤ Pass: ${WHITE}$proxy_pass${NC}"
+echo ""
 
-# Cấu hình dante
-cat > /etc/danted.conf <<EOF
+# Cập nhật & cài Dante
+echo -e "${YELLOW}[1/4] ➤ Cài đặt Dante SOCKS5 Server...${NC}"
+apt update && apt install -y dante-server
+
+# Tạo file cấu hình Dante
+echo -e "${YELLOW}[2/4] ➤ Đang cấu hình Dante SOCKS5 trên port 6969...${NC}"
+cat <<EOF > /etc/danted.conf
 logoutput: /var/log/danted.log
-
 internal: 0.0.0.0 port = 6969
-external: eth0
-
+external: $(ip route get 1 | awk '{print $5; exit}')
 method: username
-
+user.notprivileged: nobody
 client pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
     log: connect disconnect error
 }
-
-pass {
+socks pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
-    protocol: tcp udp
     log: connect disconnect error
-    method: username
 }
 EOF
 
-# Tự động chọn interface nếu không phải eth0
-iface=$(ip route | grep default | awk '{print $5}' | head -n1)
-sed -i "s/external: eth0/external: $iface/" /etc/danted.conf
+# Tạo user SOCKS5
+echo -e "${YELLOW}[3/4] ➤ Tạo user SOCKS5...${NC}"
+useradd -M -s /usr/sbin/nologin "$proxy_user"
+echo "$proxy_user:$proxy_pass" | chpasswd
 
-# Tạo service danted
-cat > /etc/systemd/system/danted.service <<EOF
-[Unit]
-Description=Dante SOCKS5 Proxy
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/sbin/danted -f /etc/danted.conf
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Khởi động dịch vụ
-systemctl daemon-reexec
-systemctl daemon-reload
-systemctl enable danted
+# Khởi động Dante
+echo -e "${YELLOW}[4/4] ➤ Khởi động dịch vụ Dante...${NC}"
 systemctl restart danted
+systemctl enable danted
 
-# Lấy IP công cộng
-ip=$(curl -s ifconfig.me)
+# Lấy IP public
+ip_address=$(curl -s ifconfig.me)
 
-# Hiển thị thông tin
+# Hiển thị thông tin SOCKS5 proxy
+echo -e "${GREEN}✅ SOCKS5 Proxy đã cài thành công!${NC}"
 echo ""
-echo "🎉 SOCKS5 Proxy đã được cài đặt thành công!"
-echo "────────────────────────────────────────────"
-echo "🌐 IP         : $ip"
-echo "🔌 Port       : 6969"
-echo "👤 Username   : $user"
-echo "🔑 Password   : $pass"
-echo "📎 Proxy URL  : socks5://$user:$pass@$ip:6969"
-echo "────────────────────────────────────────────"
+echo -e "${PURPLE}╔═══════════════════════════════════════════════════════╗${NC}"
+echo -e "${PURPLE}║${WHITE}           SOCKS5 Proxy Thông Tin Kết Nối               ${PURPLE}║${NC}"
+echo -e "${PURPLE}╠═══════════════════════════════════════════════════════╣${NC}"
+echo -e "${PURPLE}║${CYAN} 📍 IP:       ${WHITE}$ip_address${PURPLE}"
+echo -e "${PURPLE}║${CYAN} 🔌 Port:     ${WHITE}6969${PURPLE}"
+echo -e "${PURPLE}║${CYAN} 👤 Username: ${WHITE}$proxy_user${PURPLE}"
+echo -e "${PURPLE}║${CYAN} 🔑 Password: ${WHITE}$proxy_pass${PURPLE}"
+echo -e "${PURPLE}║${CYAN} 🧰 Loại:     ${WHITE}SOCKS5${PURPLE}"
+echo -e "${PURPLE}╚═══════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+echo -e "${GREEN}🎉 SOCKS5 Proxy đã sẵn sàng! Dùng tool, phần mềm, SSH... đều OK.${NC}"
